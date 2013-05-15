@@ -3,9 +3,10 @@
   (:use [clojure.java.io])
   (:require [clojure.string :as st])
   (:require [clojure.zip :as z]))
-;clojure.algo.generic.functor 
+
 (defmacro newif [a n b c] 
   `(if (> ~n ~a) ~b ~c))
+
 
 (def sf
   [[0 0 0 0 0 0 0 0]
@@ -37,7 +38,7 @@
 (defn od
   "någon sorts rekusiv historia"
   [x y dx dy c bs co]
-  (if (or (>= (dx x) FMAX) (< (dx x) 0) (>= (dy y) FMAX) (< (dy y) 0))
+  (if (or (> (dx x) FMAX) (< (dx x) 0) (> (dy y) FMAX) (< (dy y) 0))
     `(0 0 0)
   (if (= ((bs (dx x)) (dy y)) (+ 1 (mod c 2)))
      (recur (dx x) (dy y) dx dy c bs (inc co))
@@ -187,10 +188,6 @@ f är heuristicen, (f sf v) sf är boardstate och v är svart/vitt (1/2) d är d
         `(defn ~(read-string (st/join `("got" ~(.toString x) ~(.toString y)))) 
                                  [~'bs ~'v] (gotxy ~x ~y ~'bs ~'v)))))
 (defgot2)
- 
-
-
-
 
 
 (defn in? 
@@ -248,6 +245,7 @@ f är heuristicen, (f sf v) sf är boardstate och v är svart/vitt (1/2) d är d
                      (if (and (not (z/branch? loc)) (not (leftm? loc)))
                        [c]))
              (inc c)))))
+
 ;returnerar hur många gånger man behöver "nexta" ett träd för at hita subträden
 (defn zipsub2 [expr]
   (next (loop [loc (z/seq-zip (seq expr)) r '() c 0]
@@ -391,9 +389,9 @@ f är heuristicen, (f sf v) sf är boardstate och v är svart/vitt (1/2) d är d
   )
 
 (defn paint-matrix 
-  [graphics cf]
+  [graphics]
   (for [x (range 0 8) y (range 0 8)]
-        (case ((cf x) y) 
+        (case ((@cf x) y) 
     1 (doto graphics 
         (.setColor Color/WHITE)
         (.fillRoundRect (* y cell-size) (* x cell-size) (- cell-size 5) (- cell-size 5) arc arc))
@@ -414,7 +412,7 @@ f är heuristicen, (f sf v) sf är boardstate och v är svart/vitt (1/2) d är d
 
 (defn paint-legalmoves 
   [g]
-  (let [legal-moves (map #(list (first (first %)) (second (first %)))  (legalmoves @cf (next-turn @turn)))]
+  (let [legal-moves (map #(list (first (first %)) (second (first %)))  (legalmoves @cf @turn))]
     (loop [lg legal-moves]
       (if-not (= (count lg) 0) 
         (let [x (first (first lg))
@@ -443,8 +441,8 @@ f är heuristicen, (f sf v) sf är boardstate och v är svart/vitt (1/2) d är d
           (.fillRect 0 0 (* cell-size game-width) (* cell-size game-height))
           )
         (doall (paint-grid g))
-        (doall (paint-matrix g @cf)) 
-        (doall (paint-legalmoves g))
+        (doall (paint-matrix g)) 
+        (paint-legalmoves g)
         )
       )
       (getPreferredSize [] (Dimension. (* cell-size game-width) (* cell-size game-height)))
@@ -495,14 +493,36 @@ f är heuristicen, (f sf v) sf är boardstate och v är svart/vitt (1/2) d är d
     )
   )
 
-(comment (defn paint-point 
-  [g [x y] color cell-size]
-  (doto g 
-    (.setColor color)
-    (.fillRect (* x cell-size) (* y cell-size) (- cell-size 1) (- cell-size 1))
-   )
+(defn gameover? 
+  []
+  (let [legal (legalmoves @cf @turn)
+        round (roundnbr @cf)]
+    (if (or (empty? legal) (not (< round 64)))
+      (boolean true)
+      (boolean nil)
+      )
+    )
   )
-         )
+
+
+(defn winner? []
+  (let [no-w (countv @cf 1)
+        no-b (countv @cf 2)
+        moves-w (legalmoves @cf 1)
+        moves-b (legalmoves @cf 2)]
+    (if (= no-w no-b)
+      (str "Game is tie!")
+      (if (or (empty? moves-w) (empty? moves-b))
+        (if (empty? moves-w)
+          (str "Winner is black!")
+          (str "Winner is white!"))
+        (if (> no-w no-b)
+          (str "Winner is white!")
+          (str "Winner is black!"))
+        )
+      )
+    )
+  )
 
 (defn -game 
   "Här är det man kör för att starta spelet."
@@ -522,10 +542,10 @@ f är heuristicen, (f sf v) sf är boardstate och v är svart/vitt (1/2) d är d
     (reset! human 1)
     (reset! turn 1)
     (loop [a 0]
-      (if (< (roundnbr @cf) 64)
+      (if (not (gameover?))
         (do
           (reset! turn (+ (mod a 2) 1))
-          (prn @turn)
+          (.repaint gamepanel)
           (if (< (roundnbr @cf) 64) 
             (let [move (if (= @human @turn)
                          (do 
@@ -538,15 +558,15 @@ f är heuristicen, (f sf v) sf är boardstate och v är svart/vitt (1/2) d är d
                          (bdo (tfun ai-fun) @cf @turn 1))]
               "Här nedanför målas planen om"
               (reset! cf (makemove move))
-              (reset! UI nil)
               (.repaint gamepanel)
               (.setText scorelabel (str "White: " (countv @cf 1) "    Black: " (countv @cf 2)))
               (java.lang.Thread/sleep 1000)
+              (reset! UI nil)
               (recur (inc a))
               )
-            (println "winner is white")
             )
           )
+        (.setText scorelabel (str (winner?) " W: " (countv @cf 1) " B: " (countv @cf 2)))
         )
       )
     )
